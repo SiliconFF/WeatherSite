@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive World Map with Weather Alerts</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+
+    #controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: white;
+      padding: 10px;
+      z-index: 1000;
+      border-radius: 5px;
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+    }
+
+    #controls label {
+      margin-right: 10px;
+    }
+
+    #refreshWeather {
+      margin-top: 10px;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+
+    .leaflet-layer,
+    .leaflet-control-zoom-in,
+    .leaflet-control-zoom-out,
+    .leaflet-control-attribution {
+      filter: invert(100%) hue-rotate(180deg) brightness(100%) contrast(90%);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="controls">
+    <label><input type="checkbox" id="weatherLayer" checked>Weather Alerts</label>
+    <button id="refreshWeather">Refresh Weather Alerts</button>
+  </div>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Initialize the map
+    const map = L.map('map').setView([38, -100.0], 4.5); // Center on US, zoom level 4.5
+
+
+    // Base layer: OpenStreetMap tiles
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    var radarUrl = 'https://mrms.ncep.noaa.gov/data/RIDGEII/CONUS/CompositeReflectivity/MRMS_CompositeReflectivity_00.00_20250701-144500.tiff';
+    var radarBounds = [[20, -130], [50, -60]]; // CONUS bounds
+    L.imageOverlay('radar.png', radarBounds, {
+      opacity: 0.5,
+      interactive: true
+    }).addTo(map);
+
+
+
+
+    // Layer 3: Weather alerts polygons
+    let weatherPolygons = L.geoJSON(null, {
+      style: function (feature) {
+        // Style based on severity for better visualization
+        const severity = feature.properties.severity;
+        let fillColor = "yellow"; // Default for Unknown or Minor
+        if (severity === "Severe") fillColor = "red";
+        else if (severity === "Moderate") fillColor = "orange";
+        return {
+          color: fillColor,
+          fillColor: fillColor,
+          fillOpacity: 0.3,
+          weight: 2
+        };
+      },
+      onEachFeature: function (feature, layer) {
+        // Add popup with alert details
+        if (feature.properties) {
+          layer.bindPopup(`
+            <b>${feature.properties.headline || 'No Headline'}</b><br>
+            <b>Event:</b> ${feature.properties.event || 'N/A'}<br>
+            <b>Severity:</b> ${feature.properties.severity || 'N/A'}<br>
+            <b>Description:</b> ${feature.properties.description || 'No Description'}<br>
+            <b>Instruction:</b> ${feature.properties.instruction || 'No Instruction'}
+          `);
+        }
+        layer.on({
+          mouseover: function () {
+            layer.setStyle({
+              fillOpacity: 0.5
+            });
+          },
+          mouseout: function () {
+            weatherPolygons.resetStyle(layer);
+          }
+        });
+      }
+    });
+
+    // Function to fetch and render weather alerts
+    function fetchWeatherAlerts() {
+      weatherPolygons.clearLayers(); // Clear existing polygons
+      fetch('https://api.weather.gov/alerts/active', {
+        headers: {
+          'User-Agent': 'WeatherApp (your.email@example.com)' // Replace with your contact info
+        }
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Filter features with Polygon geometry
+          const polygonFeatures = data.features.filter(feature => feature.geometry && feature.geometry.type === "Polygon");
+          const geoJsonData = {
+            type: "FeatureCollection",
+            features: polygonFeatures
+          };
+          // Add GeoJSON data to weatherPolygons layer
+          weatherPolygons.addData(geoJsonData);
+          // Optionally zoom to the bounds of the weather polygons
+          if (polygonFeatures.length > 0) {
+            map.fitBounds(weatherPolygons.getBounds());
+          }
+        })
+        .catch(error => {
+          console.error('There was a problem with the fetch operation:', error);
+          alert('Failed to load weather alerts. Please try again later.');
+        });
+    }
+    function fetchMesoDiscussion() {
+      weatherPolygons.clearLayers(); // Clear existing polygons
+      fetch('https://data2.weatherwise.app/mesoscale-discussions/USA.geojson?_=1751303510718', {
+        headers: {
+          'User-Agent': 'WeatherApp (your.email@example.com)' // Replace with your contact info
+        }
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Filter features with Polygon geometry
+          const polygonFeatures = data.features.filter(feature => feature.geometry && feature.geometry.type === "Polygon");
+          const geoJsonData = {
+            type: "FeatureCollection",
+            features: polygonFeatures
+          };
+          // Add GeoJSON data to weatherPolygons layer
+          weatherPolygons.addData(geoJsonData);
+          // Optionally zoom to the bounds of the weather polygons
+          if (polygonFeatures.length > 0) {
+            map.fitBounds(weatherPolygons.getBounds());
+          }
+        })
+        .catch(error => {
+          console.error('There was a problem with the fetch operation:', error);
+          alert('Failed to load weather alerts. Please try again later.');
+        });
+    }
+
+    function fetchCompositeRadar() {
+      weatherPolygons.clearLayers(); // Clear existing polygons
+      fetch('https://data2.weatherwise.app/mesoscale-discussions/USA.geojson?_=1751303510718', {
+        headers: {
+          'User-Agent': 'WeatherApp (your.email@example.com)' // Replace with your contact info
+        }
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Filter features with Polygon geometry
+          const polygonFeatures = data.features.filter(feature => feature.geometry && feature.geometry.type === "Polygon");
+          const geoJsonData = {
+            type: "FeatureCollection",
+            features: polygonFeatures
+          };
+          // Add GeoJSON data to weatherPolygons layer
+          weatherPolygons.addData(geoJsonData);
+          // Optionally zoom to the bounds of the weather polygons
+          if (polygonFeatures.length > 0) {
+            map.fitBounds(weatherPolygons.getBounds());
+          }
+        })
+        .catch(error => {
+          console.error('There was a problem with the fetch operation:', error);
+          alert('Failed to load weather alerts. Please try again later.');
+        });
+    }
+
+    // Initial fetch of weather alerts
+    fetchWeatherAlerts();
+    fetchMesoDiscussion();
+    // Add layers to map (default on)
+    weatherPolygons.addTo(map);
+
+    document.getElementById('weatherLayer').addEventListener('change', function () {
+      if (this.checked) {
+        map.addLayer(weatherPolygons);
+      } else {
+        map.removeLayer(weatherPolygons);
+      }
+    });
+
+    // Refresh button event listener
+    document.getElementById('refreshWeather').addEventListener('click', fetchWeatherAlerts);
+  </script>
+</body>
+
+</html>
