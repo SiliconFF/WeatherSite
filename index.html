@@ -7,6 +7,13 @@
   <title>Basic Weather Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
+    .popupCustom .leaflet-popup-tip,
+    .popupCustom .leaflet-popup-content-wrapper {
+      background: #e0e0e0;
+      color: #234c5e;
+      font-size: 12px;
+    }
+
     body {
       margin: 0;
       font-family: Arial, sans-serif;
@@ -57,7 +64,11 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     // Initialize the map
-    const map = L.map('map').setView([38, -100.0], 4.5); // Center on US, zoom level 4.5
+    const map = L.map('map', {
+      minZoom: 3,
+      maxZoom: 15
+    }).setView([38, -100.0], 3); // Center on US, zoom level 4.5
+
 
     // Base layer: OpenStreetMap tiles
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -65,8 +76,17 @@
       maxZoom: 19
     }).addTo(map);
 
-    var radarUrl = 'https://mrms.ncep.noaa.gov/data/RIDGEII/CONUS/CompositeReflectivity/MRMS_CompositeReflectivity_00.00_20250701-144500.tiff';
-    var radarBounds = [[20, -130], [50, -60]]; // CONUS bounds
+    var radarUrl = 'https://drive.google.com/file/d/1qTscTebAOOIK99Wu7WwwJyRxLDTgiMHy/view?usp=drive_link';
+    var radarBounds = [[20, -130.0], [55.0, -60.0]]; // CONUS bounds for NOAA MRMS Composite Reflectivity
+    map.setMaxBounds(map.getBounds());
+
+    var customOptions = {
+      'maxWidth': 400,
+      'width': 200,
+      'maxHeight': 200,
+      'overflow-y': scroll,
+      'className': 'popupCustom'
+    }
 
     // Layer 3: Weather alerts polygons
     let weatherPolygons = L.geoJSON(null, {
@@ -79,7 +99,7 @@
         return {
           color: fillColor,
           fillColor: fillColor,
-          fillOpacity: 0.3,
+          fillOpacity: 0.5,
           weight: 2
         };
       },
@@ -87,12 +107,13 @@
         // Add popup with alert details
         if (feature.properties) {
           layer.bindPopup(`
+
             <b>${feature.properties.headline || 'No Headline'}</b><br>
             <b>Event:</b> ${feature.properties.event || feature.properties.text}}<br>
             <b>Severity:</b> ${feature.properties.severity || 'N/A'}<br>
             <b>Description:</b> ${feature.properties.description || 'No Description'}<br>
             <b>Instruction:</b> ${feature.properties.instruction || 'No Instruction'}
-          `);
+          `, customOptions);
         }
         layer.on({
           mouseover: function () {
@@ -130,10 +151,7 @@
           };
           // Add GeoJSON data to weatherPolygons layer
           weatherPolygons.addData(geoJsonData);
-          // Optionally zoom to the bounds of the weather polygons
-          if (polygonFeatures.length > 0) {
-            map.fitBounds(weatherPolygons.getBounds());
-          }
+
         })
         .catch(error => {
           console.error('There was a problem with the fetch operation:', error);
@@ -171,16 +189,31 @@
 
 
     function fetchCompositeRadar() {
-      L.imageOverlay('radar.png', radarBounds, {
-        opacity: 0.5,
-        interactive: true
-      }).addTo(map);
+      if (img != null) {
+        img.removeLayer();
+      }
+
+      fetch(radarUrl)
+        .then(response => response.blob())
+        .then(blob => {
+          const localUrl = URL.createObjectURL(blob);
+          img = L.imageOverlay(localUrl, radarBounds, {
+            opacity: 0.5,
+            interactive: true
+          }).addTo(map);
+        })
+        .catch(error => {
+          console.error('Error fetching radar image:', error);
+        });
     }
 
     // Initial fetch of weather alerts
-    fetchWeatherAlerts();
+    img = null
     fetchMesoDiscussion();
-    fetchCompositeRadar()
+    fetchWeatherAlerts();
+    fetchCompositeRadar();
+
+
     // Add layers to map (default on)
     weatherPolygons.addTo(map);
 
@@ -193,8 +226,8 @@
     });
 
     // Refresh button event listener
-    document.getElementById('refreshWeather').addEventListener('click', fetchWeatherAlerts);
     document.getElementById('refreshWeather').addEventListener('click', fetchMesoDiscussion);
+    document.getElementById('refreshWeather').addEventListener('click', fetchWeatherAlerts);
     document.getElementById('refreshWeather').addEventListener('click', fetchCompositeRadar);
   </script>
 </body>
